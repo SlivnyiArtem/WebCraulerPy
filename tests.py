@@ -1,5 +1,11 @@
+import os
+import re
 import unittest
-from urllib.parse import urlparse
+import collections
+from urllib.parse import urlparse, unquote
+
+import requests
+from bs4 import BeautifulSoup
 
 import main
 
@@ -131,21 +137,62 @@ class WebsiteLinksTests(unittest.TestCase):
             'https://ru.wikipedia.org/wiki/%D0%9E%D1%81%D0%BD%D0%B0%D0%B1%D1%80%D1%8E%D0%BA'}
         real_links = main.website_links(
             "https://ru.wikipedia.org/wiki/%D0%9F%D0%B0%D0%B9%D0%BD%D0%B5_(%D1%80%D0%B0%D0%B9%D0%BE%D0%BD)",
-            ["ru.wikipedia.org"], main.RobotParser("http://" +
+            ["ru.wikipedia.org"], main.NewRobotParser("http://" +
                                                    urlparse(
                                                        "https://ru.wikipedia.org/wiki/%D0%9F%D0%B0%D0%B9%D0%BD%D0%B5_(%D1%80%D0%B0%D0%B9%D0%BE%D0%BD)").netloc + "/robots.txt"))
         self.assertSetEqual(correct_links, real_links)
 
 
+class SafeFileTests(unittest.TestCase):
+    def test_safe_when_offset_is_none(self):
+        sub_title = None
+        try:
+            url = "https://ru.wikipedia.org/wiki/%D0%92%D0%B8%D0%B2%D0%B5%D1%80%D0%BD%D0%B0"
+            content = requests.get(url).content
+            soup = BeautifulSoup(content, "html.parser")
+            title = soup.title.string
+            html_title = title + '.html'
+            sub_title = re.sub(r'[:></"\\|*?]', "_", html_title)
+            if os.path.exists(sub_title):
+                os.remove(sub_title)
+            main.safe_html(url, None)
+            self.assertEqual(os.path.exists(sub_title), True)
+        finally:
+            os.remove(sub_title)
+
+    def test_safe_when_offset_is_not_none(self):
+        sub_title = None
+        try:
+            url = "https://ru.wikipedia.org/wiki/%D0%92%D0%B8%D0%B2%D0%B5%D1%80%D0%BD%D0%B0"
+            content = requests.get(url).content
+            soup = BeautifulSoup(content, "html.parser")
+            title = soup.title.string
+            html_title = title + '.html'
+            sub_title = re.sub(r'[:></"\\|*?]', "_", html_title)
+            if os.path.exists(sub_title):
+                os.remove(sub_title)
+            main.safe_html(url, 6000)
+            self.assertEqual(os.path.exists(sub_title), True)
+            self.assertEqual(17458, os.stat(sub_title).st_size)
+        finally:
+            os.remove(sub_title)
+
 '''
-class TestSum(unittest.TestCase):
-
-    def test_sum(self):
-        self.assertEqual(sum([1, 2, 3]), 6, "Should be 6")
-
-class TestSum2(unittest.TestCase):
-    def test_sum_tuple(self):
-        self.assertEqual(sum((1, 2, 2)), 6, "Should be 6")
+class SafeMultiThreadTests(unittest.TestCase):
+    def test_safe(self):
+        url = "https://ru.wikipedia.org/wiki/%D0%92%D0%B8%D0%B2%D0%B5%D1%80%D0%BD%D0%B0"
+        content = requests.get(url).content
+        soup = BeautifulSoup(content, "html.parser")
+        title = soup.title.string
+        html_title = title + '.html'
+        sub_title = re.sub(r'[:></"\\|*?]', "_", html_title)
+        if os.path.exists(sub_title):
+            os.remove(sub_title)
+        title = unquote(url).split('/')
+        title = "MT" + title[-1] + ".html"
+        main.safe_multi_thread(url, title)
+        # self.assertEqual(os.path.exists(title), True)
+        os.remove(title)
 '''
 
 if __name__ == '__main__':

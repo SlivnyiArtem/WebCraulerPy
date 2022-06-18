@@ -20,6 +20,7 @@ domains = []
 visited = set()
 on_pause = False
 robot_parser = None
+type = None
 
 class NewRobotParser:
     def __init__(self, robots_txt_url):
@@ -56,10 +57,10 @@ class NewRobotParser:
                 return False
         return True
 
-
+'''
 class RobotParser:
     def __init__(self, robots_txt_url):
-        print("@@@@")
+        print("@@@@=")
         response = requests.get(robots_txt_url)
         if response.status_code != 200:
             return
@@ -74,7 +75,7 @@ class RobotParser:
         if not result:
             print("MISSED " + url)
         return result
-
+'''
 
 class perpetual_timer():
     def __init__(self, t, hFunction, pos_offset):
@@ -97,6 +98,8 @@ def initial(args):
     global domains
     global start_page
     global robot_parser
+    global type
+    type = args.t
     updateFiles = args.updateFiles
     domains = args.domains
     start_page = args.page
@@ -109,6 +112,9 @@ def initial(args):
 
 
 def crauler(current_url, offset):
+    print(current_url + " CUR")
+    print(threading.active_count())
+    print(threading.currentThread())
     global robot_parser
     print(current_url + " current_url_for_crauler")
     # print(str(offset) + " offset")
@@ -118,10 +124,14 @@ def crauler(current_url, offset):
         title = unquote(current_url).split('/')
         title = title[-1]
 
-        if offset is not None:
+        if offset is not None or type != "tm":
+            print(type)
+            print(offset)
+            print("safe one thread")
             safe_html(current_url, offset)
         else:
-            safe_multi_thread(100, current_url, title + ".html")
+            print("safe multi thread")
+            safe_multi_thread(current_url, title + ".html")
 
         for link in website_links(current_url, domains, robot_parser):
             if link not in visited:
@@ -138,8 +148,7 @@ def contains_file(file_name):
 
 def safe_html(cur_url, offset):
     # print(cur_url + " safe this html")
-    if contains_file(cur_url):
-        return
+
     # !!!! исправить на имя файла
 
     if offset is not None:
@@ -148,11 +157,14 @@ def safe_html(cur_url, offset):
         # print(response.headers)
         content_length = response.headers.get("content-length")
         # print(content_length)
-        headers = {'Range': 'bytes=1000-10000'}
+        range_header = f'bytes={offset}-{content_length}'
+        print(range_header)
+        headers = {'Range': range_header}
 
         response = requests.get(cur_url, headers=headers, stream=True)
         content = response.content
         code = response.status_code
+        print(code)
         # print(len(content))
         # print(code)
         # print(response.headers)
@@ -162,22 +174,31 @@ def safe_html(cur_url, offset):
     soup = BeautifulSoup(content, "html.parser")
     title = soup.title.string
     html_title = title + '.html'
-    sub_title = re.sub(r'[:><\/"\\|*?]', "_", html_title)
+    sub_title = re.sub(r'[:></"\\|*?]', "_", html_title)
+    if contains_file(sub_title):
+        print("File already contains")
+        return
     file = open(sub_title, "wb")
     soup_str = soup.encode("UTF8")
     file.write(soup_str)
     file.close()
 
 
-def safe_multi_thread(size, file_url, file_name, threads_cnt=2):
-    # print(file_name + " saving multi-thread")
-    if contains_file(file_name):
-        return
-    part = int(size) / threads_cnt
+def safe_multi_thread(file_url, file_name, threads_cnt=2):
+    response = requests.head(file_url)
+    content_length = response.headers.get("content-length")
+    if content_length is None:
+        content_length = 10000
+    part = int(content_length) / threads_cnt
     title = re.sub(r'[:></"\\|*?]', "_", file_name)
+    print(title)
+    if contains_file(title):
+        print("File already contains")
+        return
     fp = open(title, "wb")
-    fp.write(b'\0' * size)
+    fp.write(b'\0' * int(content_length))
     fp.close()
+    print(title + " WAS WRITTEN")
     for i in range(threads_cnt):
         start = part * i
         end = start + part
@@ -262,24 +283,35 @@ def website_links(url, domains, robot_parser):
 def update_html_files():
     for filename in os.listdir(os.getcwd()):
         if '.html' in filename:
+            print("@")
+            message = None
             with open(filename, encoding="UTF-8") as f:
+                print("@@")
                 file = f.read()
-                soup = BeautifulSoup(file, "html.parser")
-                url = soup.find('link', rel=re.compile('canonical'))['href']
-                index = file.find('dateModified')
-                date = file[index + 15:index + 35]
-                if '<' in date or '>' in date:
-                    print("Not Apd")
-                    continue
-                else:
-                    new_html = requests.get(url).text
-                    index2 = new_html.find('dateModified')
-                    date2 = new_html[index2 + 15:index2 + 35]
-                    if date2 == date:
+                print(str(len(file)) + " F")
+                if len(file) > 0:
+                    soup = BeautifulSoup(file, "html.parser")
+                    url = soup.find('link', rel=re.compile('canonical'))['href']
+                    index = file.find('dateModified')
+                    date = file[index + 15:index + 35]
+                    if '<' in date or '>' in date:
+                        print("Not Apd")
                         continue
                     else:
-                        safe_html(url, None)
-
+                        new_html = requests.get(url).text
+                        index2 = new_html.find('dateModified')
+                        date2 = new_html[index2 + 15:index2 + 35]
+                        if date2 == date:
+                            continue
+                        else:
+                            safe_html(url, None)
+                else:
+                    message = f"Данный файл: {filename} не содержал информацию о url по которому его можно обновить"
+                    print(message)
+                    # f.write(message)
+            if message is not None:
+                with open(filename, "w", encoding="UTF-8") as f:
+                    f.write(message)
 
 if __name__ == '__main__':
 
