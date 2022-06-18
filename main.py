@@ -12,7 +12,6 @@ from urllib.parse import urlparse, urljoin, unquote
 from urllib.request import urlopen
 from threading import Timer
 
-
 start_page = None
 url_queue = Queue()
 domains = []
@@ -20,7 +19,8 @@ domains = []
 visited = set()
 on_pause = False
 robot_parser = None
-type = None
+q_type = None
+
 
 class NewRobotParser:
     def __init__(self, robots_txt_url):
@@ -33,21 +33,7 @@ class NewRobotParser:
                 res_line = robots_line.replace(': ', '\n').split("\n")[1]
                 disallow_list.append(res_line)
             if "User-agent: *" in robots_line:
-                print("USER")
                 right_user_agent = True
-
-
-        '''
-        with os.popen("curl " + robots_txt_url).read() as robots_file:
-            print("OPEN")
-            data = robots_file.read()
-            for line in data.split("\n"):
-                if right_user_agent and line.startswith('Disallow'):
-                    disallow_list.append(line.split(": ")[1])
-                if "User-agent: *" in line:
-                    print("USER")
-                    right_user_agent = True
-        '''
         self.disallow = disallow_list
         print(disallow_list)
 
@@ -57,25 +43,6 @@ class NewRobotParser:
                 return False
         return True
 
-'''
-class RobotParser:
-    def __init__(self, robots_txt_url):
-        print("@@@@=")
-        response = requests.get(robots_txt_url)
-        if response.status_code != 200:
-            return
-        self.robot_parser = urllib.robotparser.RobotFileParser()
-        self.robot_parser.set_url(robots_txt_url)
-        self.robot_parser.read()
-
-    def can_fetch(self, url, user_agent="*"):
-        # return True
-        # print("@@@@@@@@@" + " " + url)
-        result = self.robot_parser.can_fetch(user_agent, url)
-        if not result:
-            print("MISSED " + url)
-        return result
-'''
 
 class perpetual_timer():
     def __init__(self, t, hFunction, pos_offset):
@@ -98,35 +65,26 @@ def initial(args):
     global domains
     global start_page
     global robot_parser
-    global type
-    type = args.t
+    global q_type
+    q_type = args.t
     updateFiles = args.updateFiles
     domains = args.domains
     start_page = args.page
-    robot_parser = NewRobotParser("http://" + urlparse(start_page).netloc + "/robots.txt")
-    '''
-    robot_parser = RobotParser("http://" +
-                               urlparse(start_page).netloc + "/robots.txt")
-    '''
+    robot_parser = NewRobotParser("http://" +
+                                  urlparse(start_page).netloc + "/robots.txt")
     url_queue.put(start_page)
 
 
 def crauler(current_url, offset):
-    print(current_url + " CUR")
-    print(threading.active_count())
-    print(threading.currentThread())
     global robot_parser
     print(current_url + " current_url_for_crauler")
-    # print(str(offset) + " offset")
     if not on_pause:
         visited.add(current_url)
 
         title = unquote(current_url).split('/')
         title = title[-1]
 
-        if offset is not None or type != "tm":
-            print(type)
-            print(offset)
+        if offset is not None or q_type != "tm":
             print("safe one thread")
             safe_html(current_url, offset)
         else:
@@ -147,27 +105,17 @@ def contains_file(file_name):
 
 
 def safe_html(cur_url, offset):
-    # print(cur_url + " safe this html")
-
-    # !!!! исправить на имя файла
-
     if offset is not None:
         print("OFFSET Is not None but " + str(offset))
         response = requests.head(cur_url)
-        # print(response.headers)
         content_length = response.headers.get("content-length")
-        # print(content_length)
         range_header = f'bytes={offset}-{content_length}'
-        print(range_header)
         headers = {'Range': range_header}
 
         response = requests.get(cur_url, headers=headers, stream=True)
         content = response.content
         code = response.status_code
         print(code)
-        # print(len(content))
-        # print(code)
-        # print(response.headers)
     else:
         content = requests.get(cur_url).content
 
@@ -191,26 +139,22 @@ def safe_multi_thread(file_url, file_name, threads_cnt=2):
         content_length = 10000
     part = int(content_length) / threads_cnt
     title = re.sub(r'[:></"\\|*?]', "_", file_name)
-    print(title)
     if contains_file(title):
         print("File already contains")
         return
     fp = open(title, "wb")
     fp.write(b'\0' * int(content_length))
     fp.close()
-    print(title + " WAS WRITTEN")
     for i in range(threads_cnt):
         start = part * i
         end = start + part
-
-        # create a Thread with start and end locations
-        t = threading.Thread(target=safe_handler,
+        thread = threading.Thread(target=safe_handler,
                              kwargs={'start': start,
                                      'end': end,
                                      'url': file_url,
                                      'filename': title})
-        t.setDaemon(True)
-        t.start()
+        thread.setDaemon(True)
+        thread.start()
 
 
 def safe_handler(start, end, url, filename):
@@ -240,8 +184,6 @@ def valid_url(url):
 
 
 def website_links(url, domains, robot_parser):
-    # print("###### " + url)
-    # global robot_parser
     urls = set()
     soup = BeautifulSoup(requests.get(url).content, "html.parser")
     for a_tag in soup.findAll("a"):
@@ -258,44 +200,33 @@ def website_links(url, domains, robot_parser):
         is_contains_in_domens = False
 
         for domain_name in domains:
-            # print(domain_name)
             if domain_name in href:
-                # print("lll")
                 is_contains_in_domens = True
                 break
-
         if not is_contains_in_domens:
-            # print("*" + href)
             continue
-
-        # print("###" + href)
 
         if not robot_parser.can_fetch(href):
             continue
         if href not in urls:
-            # print(href)
             urls.add(href)
-    # print(urls)
-    # print(len(urls))
     return urls
 
 
 def update_html_files():
     for filename in os.listdir(os.getcwd()):
         if '.html' in filename:
-            print("@")
             message = None
             with open(filename, encoding="UTF-8") as f:
-                print("@@")
                 file = f.read()
-                print(str(len(file)) + " F")
                 if len(file) > 0:
-                    soup = BeautifulSoup(file, "html.parser")
-                    url = soup.find('link', rel=re.compile('canonical'))['href']
+                    soup = BeautifulSoup(file,
+                                         "html.parser")
+                    url = soup.find('link',
+                                    rel=re.compile('canonical'))['href']
                     index = file.find('dateModified')
                     date = file[index + 15:index + 35]
                     if '<' in date or '>' in date:
-                        print("Not Apd")
                         continue
                     else:
                         new_html = requests.get(url).text
@@ -306,12 +237,13 @@ def update_html_files():
                         else:
                             safe_html(url, None)
                 else:
-                    message = f"Данный файл: {filename} не содержал информацию о url по которому его можно обновить"
-                    print(message)
-                    # f.write(message)
+                    message = f"Данный файл: {filename}" \
+                              f" не содержал информацию " \
+                              f"о url по которому его можно обновить"
             if message is not None:
                 with open(filename, "w", encoding="UTF-8") as f:
                     f.write(message)
+
 
 if __name__ == '__main__':
 
@@ -330,10 +262,6 @@ if __name__ == '__main__':
     parser.add_argument('--updateFiles', type=str, help='update files')
 
     args = parser.parse_args()
-    # print(args.t + " Type")
-    # print(args.domains)
-    # print(args.page + " Start Page")
-    # print(args.updateFiles + " Update")
     initial(args)
 
     if args.updateFiles == "1":
