@@ -478,6 +478,7 @@ class SafeFileTests(unittest.TestCase):
         finally:
             os.remove(sub_title)
 
+
 '''
 class SafeMultiThreadTests(unittest.TestCase):
     def test_safe(self):
