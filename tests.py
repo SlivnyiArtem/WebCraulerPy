@@ -463,8 +463,8 @@ class SafeFileTests(unittest.TestCase):
     def test_safe_when_offset_is_not_none(self):
         sub_title = None
         try:
-            url = "https://ru.wikipedia.org/wiki/%D0%92%D0%B8%D0%B" \
-                  "2%D0%B5%D1%80%D0%BD%D0%B0"
+            url = "https://docs.python.org/3/"
+            # url = "https://www.geeksforgeeks.org/html5-header-tag/"
             content = requests.get(url).content
             soup = BeautifulSoup(content, "html.parser")
             title = soup.title.string
@@ -472,11 +472,12 @@ class SafeFileTests(unittest.TestCase):
             sub_title = re.sub(r'[:></"\\|*?]', "_", html_title)
             if os.path.exists(sub_title):
                 os.remove(sub_title)
-            main.safe_html(url, 6000)
+            main.safe_html(url, 1000)
             self.assertEqual(os.path.exists(sub_title), True)
             self.assertEqual(17458, os.stat(sub_title).st_size)
         finally:
-            os.remove(sub_title)
+            print()
+            # os.remove(sub_title)
 
 
 '''
@@ -497,6 +498,17 @@ class SafeMultiThreadTests(unittest.TestCase):
         # self.assertEqual(os.path.exists(title), True)
         os.remove(title)
 '''
+
+class RUpdateHtmlFilesTests(unittest.TestCase):
+    def test_update_html_files(self):
+        title = "Бурбоны — Википедия.html"
+        with open(title, "w+") as f:
+            f.write("\"dateModified\":\"2021-05-04T11:03:15Z\"" + " "  + "<link rel=\"canonical\" href=\"https://ru.wikipedia.org/wiki/%D0%91%D1%83%D1%80%D0%B1%D0%BE%D0%BD%D1%8B\"/>")
+        file_length = os.stat(title).st_size
+        main.update_html_files()
+        file_length2 = os.stat(title).st_size
+        os.remove(title)
+        self.assertNotEqual(file_length, file_length2)
 
 if __name__ == '__main__':
     unittest.main()

@@ -153,7 +153,7 @@ def safe_multi_thread(file_url, file_name, threads_cnt=2):
                                      'end': end,
                                      'url': file_url,
                                      'filename': title})
-        thread.setDaemon(True)
+        thread.daemon = True
         thread.start()
 
 
