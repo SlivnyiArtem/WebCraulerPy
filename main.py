@@ -22,7 +22,8 @@ robot_parser = None
 q_type = None
 
 
-class NewRobotParser:
+class RobotParser:
+    ''' Парсер robots.txt '''
     def __init__(self, robots_txt_url):
         disallow_list = []
         right_user_agent = False
@@ -38,6 +39,7 @@ class NewRobotParser:
         print(disallow_list)
 
     def can_fetch(self, url_for_fetch):
+        ''' Проверка доступности url для краулинга '''
         for disallow_member in self.disallow:
             if disallow_member in url_for_fetch:
                 return False
@@ -45,6 +47,7 @@ class NewRobotParser:
 
 
 class perpetual_timer():
+    ''' Класс, которырый вызывает hFunction каждый период t'''
     def __init__(self, t, hFunction, pos_offset):
         self.t = t
         self.pos_offset = pos_offset
@@ -52,10 +55,12 @@ class perpetual_timer():
         self.job = Timer(self.t, self.handle_function)
 
     def handle_function(self):
-        with threading.Lock():
-            new_args = url_queue.get()
-        self.hFunction(new_args, self.pos_offset)
-        self.pos_offset = None
+        '''функция, руководящая выполнением переданной функции, а также переопределяющая таймер для следующего периода'''
+        if not on_pause:
+            with threading.Lock():
+                    new_args = url_queue.get()
+            self.hFunction(new_args, self.pos_offset)
+            self.pos_offset = None
         self.job = Timer(self.t, self.handle_function)
         self.job.start()
 
@@ -70,41 +75,44 @@ def initial(args):
     updateFiles = args.updateFiles
     domains = args.domains
     start_page = args.page
-    robot_parser = NewRobotParser("http://" +
-                                  urlparse(start_page).netloc + "/robots.txt")
+    robot_parser = RobotParser(urlparse(start_page).scheme + '://' +
+                               urlparse(start_page).netloc + "/robots.txt")
     url_queue.put(start_page)
 
 
 def crauler(current_url, offset):
+    '''обрабатывает текущий url, вызывая функцию сохранения страницы и добавляя в список на посещение результат функции поиска ссылок на текущей странице'''
     global robot_parser
     print(current_url + " current_url_for_crauler")
-    if not on_pause:
-        visited.add(current_url)
+    visited.add(current_url)
 
-        title = unquote(current_url).split('/')
-        title = title[-1]
+    title = unquote(current_url).split('/')
+    title = title[-1]
 
-        if offset is not None or q_type != "tm":
-            print("safe one thread")
-            safe_html(current_url, offset)
+    if offset is not None or q_type != "tm":
+        print("safe one thread")
+        safe_html(current_url, offset)
+    else:
+        print("safe multi thread")
+        safe_multi_thread(current_url, title + ".html")
+
+    for link in website_links(current_url, domains, robot_parser):
+        if link not in visited:
+            with threading.Lock():
+                url_queue.put(link)
         else:
-            print("safe multi thread")
-            safe_multi_thread(current_url, title + ".html")
-
-        for link in website_links(current_url, domains, robot_parser):
-            if link not in visited:
-                with threading.Lock():
-                    url_queue.put(link)
-            else:
-                continue
-
+            continue
+    else:
+        print("@@@@")
 
 def contains_file(file_name):
+    ''' функция проверки существания файла по его имени'''
     sub_title = re.sub(r'[:></"\\|*?]', "_", file_name)
     return os.path.exists(sub_title)
 
 
-def safe_html(cur_url, offset):
+def safe_html(cur_url, offset, is_update=False):
+    ''' функция, сохранияющая файл в папку с проектом в однопоточном режиме '''
     if offset is not None:
         print("OFFSET Is not None but " + str(offset))
         response = requests.head(cur_url)
@@ -123,7 +131,7 @@ def safe_html(cur_url, offset):
     title = soup.title.string
     html_title = title + '.html'
     sub_title = re.sub(r'[:></"\\|*?]', "_", html_title)
-    if contains_file(sub_title):
+    if contains_file(sub_title) and not is_update:
         print("File already contains")
         return
     file = open(sub_title, "wb")
@@ -133,6 +141,7 @@ def safe_html(cur_url, offset):
 
 
 def safe_multi_thread(file_url, file_name, threads_cnt=2):
+    ''' функция, сохранияющая файл в папку с проектом в двухпоточном режиме '''
     response = requests.head(file_url)
     content_length = response.headers.get("content-length")
     if content_length is None:
@@ -158,6 +167,7 @@ def safe_multi_thread(file_url, file_name, threads_cnt=2):
 
 
 def safe_handler(start, end, url, filename):
+    ''' Функция - task, сохраняющая часть файла'''
     headers = {'Range': 'bytes=%d-%d' % (start, end)}
     r = requests.get(url, headers=headers, stream=True)
     with open(filename, "r+b") as fp:
@@ -166,11 +176,13 @@ def safe_handler(start, end, url, filename):
 
 
 def on_release(key):
+
     global on_pause
     try:
         if key.vk == 80:
+            print("#####")
             on_pause = not on_pause
-    except Exception:
+    except AttributeError:
         print("Invalid Key")
 
 
@@ -179,11 +191,14 @@ listener.start()
 
 
 def valid_url(url):
+    ''' функция проверяющая наличие протокольного префикса и корректность доменного имени по url '''
     parsed = urlparse(url)
     return bool(parsed.netloc) and bool(parsed.scheme)
 
 
 def website_links(url, domains, robot_parser):
+    ''' функция, возвращающая множество ссылок, найденных на html - странице по данному url, удовлетворяющих
+    robots.txt и принадлежащих множеству доменов, указанных в качестве параметров'''
     urls = set()
     soup = BeautifulSoup(requests.get(url).content, "html.parser")
     for a_tag in soup.findAll("a"):
@@ -214,11 +229,15 @@ def website_links(url, domains, robot_parser):
 
 
 def update_html_files():
+    ''' функция, обновляющая содержимое сохраненных html - файлов '''
     for filename in os.listdir(os.getcwd()):
         if '.html' in filename:
             message = None
             with open(filename, encoding="UTF-8") as f:
-                file = f.read()
+                try:
+                    file = f.read()
+                except UnicodeDecodeError:
+                    continue
                 if len(file) > 0:
                     soup = BeautifulSoup(file,
                                          "html.parser")
@@ -235,7 +254,7 @@ def update_html_files():
                         if date2 == date:
                             continue
                         else:
-                            safe_html(url, None)
+                            safe_html(url, None, is_update=True)
                 else:
                     message = f"Данный файл: {filename}" \
                               f" не содержал информацию " \
