@@ -18,28 +18,38 @@ domains = []
 
 visited = set()
 on_pause = False
-robot_parser = None
 q_type = None
 
 
 class RobotParser:
-    ''' Парсер robots.txt '''
-    def __init__(self, robots_txt_url):
-        disallow_list = []
+    """ Парсер robots.txt """
+
+    def __init__(self, domains):
+        disallow_list = set()
         right_user_agent = False
 
-        for line in urllib.request.urlopen(robots_txt_url):
-            robots_line = line.decode('utf-8')
-            if right_user_agent and robots_line.startswith('Disallow'):
-                res_line = robots_line.replace(': ', '\n').split("\n")[1]
-                disallow_list.append(res_line)
-            if "User-agent: *" in robots_line:
-                right_user_agent = True
+        for domain in domains:
+            if requests.get("https://" + domain + "/robots.txt").status_code == 200:
+                url_for_domain = "https://" + domain + "/robots.txt"
+            elif requests.get("http://" + domain + "/robots.txt").status_code == 200:
+                url_for_domain = "http://" + domain + "/robots.txt"
+            else:
+                continue
+            try:
+                for line in urllib.request.urlopen(url_for_domain):
+                    robots_line = line.decode('utf-8')
+                    if right_user_agent and robots_line.startswith('Disallow'):
+                        res_line = robots_line.replace(': ', '\n').split("\n")[1]
+                        disallow_list.add(res_line)
+                    if "User-agent: *" in robots_line:
+                        right_user_agent = True
+            except urllib.error.URLError:
+                continue
         self.disallow = disallow_list
-        print(disallow_list)
+
 
     def can_fetch(self, url_for_fetch):
-        ''' Проверка доступности url для краулинга '''
+        """ Проверка доступности url для краулинга """
         for disallow_member in self.disallow:
             if disallow_member in url_for_fetch:
                 return False
@@ -47,7 +57,8 @@ class RobotParser:
 
 
 class perpetual_timer():
-    ''' Класс, которырый вызывает hFunction каждый период t'''
+    """ Класс, экземпляр которырого вызывает hFunction каждые t млс"""
+
     def __init__(self, t, hFunction, pos_offset):
         self.t = t
         self.pos_offset = pos_offset
@@ -55,34 +66,36 @@ class perpetual_timer():
         self.job = Timer(self.t, self.handle_function)
 
     def handle_function(self):
-        '''функция, руководящая выполнением переданной функции, а также переопределяющая таймер для следующего периода'''
+        """функция, руководящая выполнением переданной функции, а также переопределяющая таймер для следующего
+        периода """
         if not on_pause:
             with threading.Lock():
-                    new_args = url_queue.get()
+                new_args = url_queue.get()
             self.hFunction(new_args, self.pos_offset)
             self.pos_offset = None
         self.job = Timer(self.t, self.handle_function)
         self.job.start()
 
 
-def initial(args):
-    global updateFiles
+robot_parser = RobotParser(domains)
+
+
+def initial(arg_type, arg_domains, arg_page):
     global domains
     global start_page
     global robot_parser
     global q_type
-    q_type = args.t
-    updateFiles = args.updateFiles
-    domains = args.domains
-    start_page = args.page
-    robot_parser = RobotParser(urlparse(start_page).scheme + '://' +
-                               urlparse(start_page).netloc + "/robots.txt")
+    q_type = arg_type
+    domains = arg_domains
+    start_page = arg_page
+    robot_parser = RobotParser(domains)
     url_queue.put(start_page)
 
 
 def crauler(current_url, offset):
-    '''обрабатывает текущий url, вызывая функцию сохранения страницы и добавляя в список на посещение результат функции поиска ссылок на текущей странице'''
-    global robot_parser
+    """обрабатывает текущий url, вызывая функцию сохранения страницы и добавляя в список на посещение результат
+    функции поиска ссылок на текущей странице """
+
     print(current_url + " current_url_for_crauler")
     visited.add(current_url)
 
@@ -102,17 +115,17 @@ def crauler(current_url, offset):
                 url_queue.put(link)
         else:
             continue
-    else:
-        print("@@@@")
+
+
 
 def contains_file(file_name):
-    ''' функция проверки существания файла по его имени'''
+    """ функция проверки существания файла по его имени"""
     sub_title = re.sub(r'[:></"\\|*?]', "_", file_name)
     return os.path.exists(sub_title)
 
 
 def safe_html(cur_url, offset, is_update=False):
-    ''' функция, сохранияющая файл в папку с проектом в однопоточном режиме '''
+    """ функция, сохранияющая файл в папку с проектом в однопоточном режиме """
     if offset is not None:
         print("OFFSET Is not None but " + str(offset))
         response = requests.head(cur_url)
@@ -141,7 +154,7 @@ def safe_html(cur_url, offset, is_update=False):
 
 
 def safe_multi_thread(file_url, file_name, threads_cnt=2):
-    ''' функция, сохранияющая файл в папку с проектом в двухпоточном режиме '''
+    """ функция, сохранияющая файл в папку с проектом в двухпоточном режиме """
     response = requests.head(file_url)
     content_length = response.headers.get("content-length")
     if content_length is None:
@@ -158,16 +171,16 @@ def safe_multi_thread(file_url, file_name, threads_cnt=2):
         start = part * i
         end = start + part
         thread = threading.Thread(target=safe_handler,
-                             kwargs={'start': start,
-                                     'end': end,
-                                     'url': file_url,
-                                     'filename': title})
+                                  kwargs={'start': start,
+                                          'end': end,
+                                          'url': file_url,
+                                          'filename': title})
         thread.daemon = True
         thread.start()
 
 
 def safe_handler(start, end, url, filename):
-    ''' Функция - task, сохраняющая часть файла'''
+    """ Функция - task, сохраняющая часть файла"""
     headers = {'Range': 'bytes=%d-%d' % (start, end)}
     r = requests.get(url, headers=headers, stream=True)
     with open(filename, "r+b") as fp:
@@ -176,11 +189,9 @@ def safe_handler(start, end, url, filename):
 
 
 def on_release(key):
-
     global on_pause
     try:
         if key.vk == 80:
-            print("#####")
             on_pause = not on_pause
     except AttributeError:
         print("Invalid Key")
@@ -191,14 +202,14 @@ listener.start()
 
 
 def valid_url(url):
-    ''' функция проверяющая наличие протокольного префикса и корректность доменного имени по url '''
+    """ функция проверяющая наличие протокольного префикса и корректность доменного имени по url """
     parsed = urlparse(url)
     return bool(parsed.netloc) and bool(parsed.scheme)
 
 
 def website_links(url, domains, robot_parser):
-    ''' функция, возвращающая множество ссылок, найденных на html - странице по данному url, удовлетворяющих
-    robots.txt и принадлежащих множеству доменов, указанных в качестве параметров'''
+    """ функция, возвращающая множество ссылок, найденных на html - странице по данному url, удовлетворяющих
+    robots.txt и принадлежащих множеству доменов, указанных в качестве параметров"""
     urls = set()
     soup = BeautifulSoup(requests.get(url).content, "html.parser")
     for a_tag in soup.findAll("a"):
@@ -229,7 +240,7 @@ def website_links(url, domains, robot_parser):
 
 
 def update_html_files():
-    ''' функция, обновляющая содержимое сохраненных html - файлов '''
+    """ функция, обновляющая содержимое сохраненных html - файлов """
     for filename in os.listdir(os.getcwd()):
         if '.html' in filename:
             message = None
@@ -281,7 +292,7 @@ if __name__ == '__main__':
     parser.add_argument('--updateFiles', type=str, help='update files')
 
     args = parser.parse_args()
-    initial(args)
+    initial(args.t, args.domains, args.page)
 
     if args.updateFiles == "1":
         update_html_files()
