@@ -8,6 +8,7 @@ import requests
 from bs4 import BeautifulSoup
 
 import main
+from perpetual_timer import perpetual_timer, url_queue
 
 correct_links = {
     'https://ru.wikipedia.org/wiki/%D0%A8%D1%82%D0%'
@@ -391,7 +392,7 @@ correct_links = {
     '0%BA'}
 
 
-class RobotParserTests(unittest.TestCase):
+class TestRobotParser(unittest.TestCase):
     def test_robot_parser_can_not_fetch(self):
         robot_parser = main.RobotParser(domains=['en.wikipedia.org'])
 
@@ -408,7 +409,7 @@ class RobotParserTests(unittest.TestCase):
         self.assertEqual(fetch_result, True)
 
 
-class CheckValidUrlTests(unittest.TestCase):
+class TestCheckValidUrl(unittest.TestCase):
     def test_unvalid_url_test(self):
         self.assertEqual(main.valid_url("://ru.wikipedia.org/"
                                         "%D0%9D%D0%B0%D1%86%D0%B8%D0%BE%D"
@@ -425,17 +426,18 @@ class CheckValidUrlTests(unittest.TestCase):
                                         "isk.ru/series/1227803/"), True)
 
 
-class WebsiteLinksTests(unittest.TestCase):
+class TestWebsiteLinks(unittest.TestCase):
     def test_find_all_links(self):
         real_links = main.website_links(
             "https://ru.wikipedia.org/wiki/%D0%9F%D0%B0%D0%B9%D0%"
             "BD%D0%B5_(%D"
             "1%80%D0%B0%D0%B9%D0%BE%D0%BD)",
-            ["ru.wikipedia.org"], main.RobotParser(domains=['ru.wikipedia.org']))
+            ["ru.wikipedia.org"],
+            main.RobotParser(domains=['ru.wikipedia.org']))
         self.assertSetEqual(correct_links, real_links)
 
 
-class SafeFileTests(unittest.TestCase):
+class TestSafeFile(unittest.TestCase):
     def test_safe_when_offset_is_none(self):
         sub_title = None
         try:
@@ -471,7 +473,7 @@ class SafeFileTests(unittest.TestCase):
             # os.remove(sub_title)
 
 
-class SafeMultiThreadTests(unittest.TestCase):
+class TestSafeMultiThread(unittest.TestCase):
     @staticmethod
     def test_safe():
         url = "https://ru.wikipedia.org/wiki/%D0%" \
@@ -490,13 +492,14 @@ class SafeMultiThreadTests(unittest.TestCase):
         os.remove(title)
 
 
-class RUpdateHtmlFilesTests(unittest.TestCase):
+class TestUpdateHtmlFiles(unittest.TestCase):
     def test_update_html_files(self):
         title = "Бурбоны — Википедия.html"
         with open(title, "w+") as f:
-            f.write("\"dateModified\":\"2021-05-04T11:03:15Z\"" + " " + "<link rel=\"canonical\" href=\"https://"
-                                                                        "ru.wikipedia.org/wiki/%D0%91%D1%83%D1%80"
-                                                                        "%D0%B1%D0%BE%D0%BD%D1%8B\"/>")
+            f.write("\"dateModified\":\"2021-05-04T11:03:15Z\""
+                    + " " + "<link rel=\"canonical\" href=\"https://"
+                            "ru.wikipedia.org/wiki/%D0%91%D1%83%D1%80"
+                            "%D0%B1%D0%BE%D0%BD%D1%8B\"/>")
         file_length = os.stat(title).st_size
         main.update_html_files()
         file_length2 = os.stat(title).st_size
@@ -504,9 +507,10 @@ class RUpdateHtmlFilesTests(unittest.TestCase):
         self.assertNotEqual(file_length, file_length2)
 
 
-class CraulerTests(unittest.TestCase):
+class TestCrauler(unittest.TestCase):
     def test_crauler_general_functionality(self):
-        start_page = "https://ru.wikipedia.org/wiki/%D0%9F%D0%B0%D0%B9%D0%BD%D0%B5(%D1%80%D0%B0%D0%B9%D0%BE%D0%BD)"
+        start_page = "https://ru.wikipedia.org/wiki/%D0%9F%D0%B0%D0%B9%D0%B" \
+                     "D%D0%B5(%D1%80%D0%B0%D0%B9%D0%BE%D0%BD)"
         main.q_type = "tm"
         main.start_page = start_page
         main.robot_parser = main.RobotParser(domains=['ru.wikipedia.org'])
@@ -522,7 +526,7 @@ class CraulerTests(unittest.TestCase):
         self.assertSetEqual(main.visited, correct_visited_set)
         current = []
         correct = []
-        while main.url_queue.qsize() > 0 and correct_queue.qsize() > 0:
+        while url_queue.qsize() > 0 and correct_queue.qsize() > 0:
             current.append(main.url_queue.get())
             correct.append(correct_queue.get())
         current.sort()
@@ -530,34 +534,37 @@ class CraulerTests(unittest.TestCase):
         self.assertListEqual(current, correct)
 
 
-class ConstructorRobotParser(unittest.TestCase):
+class TestConstructorRobot(unittest.TestCase):
     def test_EmptyString(self):
         self.assertRaises(TypeError, main.RobotParser, None, ["abc"])
 
 
-class ConstructorPerpetual_timer(unittest.TestCase):
+class TestConstructorPerpetual_timer(unittest.TestCase):
     def test_EmptyString(self):
-        self.assertRaises(TypeError, main.perpetual_timer, None, main.crauler("https://ru."
-                                                                              "wikipedia.org/wiki/"
-                                                                              "%D0%9F%D0%B0%D0%B9%D0%BD%D"
-                                                                              "0%B5(%D1%80%D0%B0%D0%B9%D0%BE%D"
-                                                                              "0%BD)", None))
+        self.assertRaises(TypeError, perpetual_timer, None,
+                          main.crauler("https://ru."
+                                       "wikipedia.org/wiki/"
+                                       "%D0%9F%D0%B0%D0%B9%D0%BD%D"
+                                       "0%B5(%D1%80%D0%B0%D0%B9%D0%BE%D"
+                                       "0%BD)", None))
 
 
-class InitialTests(unittest.TestCase):
+class TestInitial(unittest.TestCase):
     def test_initial_behaviour(self):
         main.initial("tm", ['ru.wikipedia.org'],
                      "https://ru.wikipedia.org/wiki/"
                      "%D0%9F%D0%B0%D0%B9%D0%BD%D0%B5"
                      "(%D1%80%D0%B0%D0%B9%D0%BE%D0%BD)")
         self.assertEqual(main.domains, ['ru.wikipedia.org'])
-        self.assertEqual(main.start_page, "https://ru.wikipedia.org/wiki/""%D0%9F%D0%B0%D0%B9"
-                                          "%D0%BD%D0%B5""(%D1%80%D0%B0%D0%B9%D0%BE%D0%BD)")
+        self.assertEqual(main.start_page,
+                         "https://ru.wikipedia.org/wiki/""%D0%9F%D0%B0%D0%B9"
+                         "%D0%BD%D0%B5""(%D1%80%D0%B0%D0%B9%D0%BE%D0%BD)")
 
         self.assertEqual(main.q_type, "tm")
         self.assertEqual(main.url_queue.qsize(), 1)
-        self.assertEqual(main.url_queue.get(), "https://ru.wikipedia.org/wiki/""%D0%9F%D0%B0%"
-                                               "D0%B9%D0%BD%D0%B5""(%D1%80%D0%B0%D0%B9%D0%BE%D0%BD)")
+        self.assertEqual(main.url_queue.get(),
+                         "https://ru.wikipedia.org/wiki/""%D0%9F%D0%B0%"
+                         "D0%B9%D0%BD%D0%B5""(%D1%80%D0%B0%D0%B9%D0%BE%D0%BD)")
 
 
 if __name__ == '__main__':
